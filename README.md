@@ -11,9 +11,20 @@ In order to evaluate the performance of both models, Akaike Information Criterio
 ---
 ### **How to run the repository**
 
-- Go to the Github repository: [https://github.com/qhtni/CB2330-project/blob/main/istg_this_better_be_the_last_one.ipynb]
+- Go to the Github repository:
+  
+  [https://github.com/qhtni/CB2330-project/blob/main/istg_this_better_be_the_last_one.ipynb]
 
-- Click the "Open in Colab" button in the top left corner to open the notebook in Google Colab. Or download the file from GitHub and then open it in Google Colab.
+
+- Click the "Open in Colab" button in the top left corner to open the notebook in Google Colab. Or download the file and then open it in Google Colab.
+
+- The code is set up to collect the necessary data directly from this repository which means that an active internet connection is required in order to run the cells. 
+
+- Now the that the NoteBook is in Google Colab: Click on **Runtime** in the Colab menu and choose **Run all**
+
+---
+### **Requirement**
+
 
 
 ---
