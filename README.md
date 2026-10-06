@@ -8,5 +8,14 @@ In the article *Spatial and temporal patterns of mass bleaching of corals in the
 
 In order to evaluate the performance of both models, Akaike Information Criterion (AIC) and Bayesian Information Criterion (BIC) was used. Lowers values for these indicates a better fit to the data. The results indicated that incorporating the global temperature anomaly to the model lowered the AIC and BIC values. Meaning that the new model provided a better fit to the data than the original.
 
+---
+### **How to run the repository**
+
+- Go to the Github repository: [https://github.com/qhtni/CB2330-project/blob/main/istg_this_better_be_the_last_one.ipynb]
+
+- Click the "Open in Colab" button in the top corner on the left hand side to open the notebook in Google Colab. Or download the file from GitHub and then open it in Google Colab.
+
+
+---
 
 
