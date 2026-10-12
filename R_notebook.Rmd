@@ -1,0 +1,682 @@
+---
+title: "Project 1"
+output: html_notebook
+---
+
+In Hughes et al. although rising global temperatures is shown to have risen over time, no statistical tests or form of temperature is used in their model for predicting the probability of severe coral bleaching events. To try and see if their model could be improved with more climate data, we used the ENSO dataset containing various climate measurements from 1950 to 2026, to see whether we could make an improved GLMM.
+
+The following notebook contains the analyses on the climate data, the relationship between the climate data and bleaching data, and finally which model with which selected fixed effects (based on the climate data) performed best.
+
+Right below we actually have why we decided to look at climate data (apart from the original paper only mentioning it). During very preliminary searches as to what we could look at, we found a figure that resembled figure 4 of the paper (which looks at severe and moderate bleaching events per year) - specifically the up and down nature because of the el Nino and la Nina cycles.
+
+```{r}
+#NO NEED TO RUN - this is the code for the enso data that gave the first clue that maybe we could use this data in our model
+
+#this is so sick: https://semba-blog.netlify.app/01/20/2020/easy-access-of-el-nino-southern-oscillation-data-in-r/
+
+# Load libraries
+library(rsoi)
+library(tidyverse)
+library(cowplot)
+
+# Download ENSO data including ONI (Oceanic Niño Index) and phases 
+enso = rsoi::download_enso() #this is not the actual data we used, it is just from this site
+
+# View the first few rows
+head(enso_data)
+
+enso.plot = ggplot(data = enso, aes(x = Date, y = ONI, fill = phase))+
+  geom_col()+
+  # ggsci::scale_fill_jama() +
+  scale_fill_manual(values = c("blue","green", "red"), name = "") +
+  cowplot::theme_minimal_grid()+
+  labs(x = "", y = "ENSO Index") +
+  theme(legend.position = "top", panel.grid = element_line(linetype = "dotted"))
+
+enso.plot %>% 
+  plotly::ggplotly() %>%
+  plotly::layout(legend = list(orientation = "h", x = 0.4, y = 1.1))
+
+```
+
+```{r}
+#loading libraries and data
+
+library(dplyr) #i love this one so much omg
+library(readr)
+library(tidyr)
+library(ggplot2)
+library(mgcv) #cannot remember what this is for tbh - gonna guess modelling (sorry some notes were written a while after the code was)
+library(lme4) #glmm 
+
+
+bleached_data<- "~/Desktop/coral_data.xlsx" #this is the coral bleaching data that the researchers colelted
+enso_data   <- "~/Desktop/dataset_enso_2026.csv" #this is the data we retrieved online
+
+bleach <- read_excel(bleached_data)
+enso_monthly <- read_csv(enso_data, show_col_types = FALSE)
+
+glimpse(bleach)
+glimpse(enso_monthly)
+```
+
+So you can see from the glimpse (in the above cell) what these two data sets contain and now we are reformatting them a bit to contian only information we actually care about.
+
+Somehting important to keep in mind already is that the researcher's dataset is yearly data, but the ENSO data set has monthly values.
+
+```{r}
+# RESHAPING THE DATA (for simplicity)
+
+#reshaping coral data (bleach) - long format 
+
+bleach_long <- bleach %>% 
+  filter(!is.na(`#`)) %>%
+  select(
+    location_id = '#', #qouations because otherwise would be a comment like this
+    region = Region,
+    locaiton_name = Location,
+    '1980':'2016' #years we care about and need for long formatting
+  ) %>% 
+  pivot_longer(
+    cols = '1980':'2016',
+    names_to = 'year',
+    values_to = 'bleaching_status'
+  ) %>% 
+  mutate( #we add columns now
+    year = as.integer(year), #make sure it takes the number not a string
+    #we want to assign binary values now - the funky part is that they had S M and NA because they ran two different analysis so depending on which analysis they assigned 1 and 0 to the diff variables. we are essentially doing the same but using different columns for this 
+     bleaching_status = ifelse(
+      is.na(bleaching_status),
+      "None",
+      bleaching_status
+    ), # so in this bleaching status column all NA values are def None
+    severe = ifelse(
+      bleaching_status == "S",
+      1L, #S will always be 1 no matter what analysis
+      0L
+    ),
+    any_bleach = ifelse(
+      bleaching_status %in% c("S", "M"),
+      1L, #this is another analysis where we look at cumulative bleaching essentially (any_bleach) so both S and M are 1
+      0L
+    ),
+    t = year - 1980 #we add a variable that represents the same one the researchers used (years since 1980)
+  )
+
+glimpse(bleach_long)
+
+table(bleach_long$bleaching_status)
+table(bleach_long$severe)
+
+n_distinct(bleach_long$location_id)
+n_distinct(bleach_long$year)
+nrow(bleach_long)
+
+#checking because there was an error initially
+bleach %>%
+  filter(is.na(`#`)) %>%
+  select(`#`, Region, Location)
+
+bleach %>%
+  count(`#`) %>%
+  filter(n > 1 | is.na(`#`))
+
+
+#enso data formatting now
+#the reason why we are looking at this data is because of some similar trends in the figures of severe and moderate bleaching across the regions in the paper and an enso data graph that was found in a very prelinary analysis of stuff mentioned in the paper (the cell with the code is above - it is not my code and completely copied from the source provided !! the cell doesn't need to be run)
+
+#not so subtle foreshadowing - we're looking at this data (from an actual dataset and not just a generated plot) to see whether we could model bleaching frequency better since we see ups and downs in the climate data - the researchers look only at time (which makes sense because they tell us how temperature is going up over time and how el nino and la nina are kind of converging) so we want to see whether we can actually correlate it to temperature (initially the plan was to see whether we could actually look at regional enso data to match the latitudes and longitudes with certain enso collections but unfortuantely that's not quite the case so we went with focusing on nino3.4 since that is the main one used)
+#https://www.ncei.noaa.gov/access/monitoring/enso/sst/
+
+#first we take the years we actually care about - it'll be easier to fileter fro the start
+enso_monthly <- enso_monthly %>%
+  filter(year >= 1980, year <= 2016)
+
+#so now we choose what variables we care about - for the sake of the graph it will be ONI data. but for later stuff we want the 3.4 data
+enso_monthly <- enso_monthly %>% #erm so some of this is actually for the next cell - im basically saying these abbrevs correspond with el nino or la nina (because they do)
+  mutate( #new column
+    enso_phase = case_when(
+      `ENSO_PhasenIntensity_(ONIbased)` %in%
+        c('VSE', 'SE', 'ME', 'WE') ~ 'El Nino',
+      `ENSO_PhasenIntensity_(ONIbased)` %in%
+        c('SL', 'ML', 'WL') ~ 'La Nina',
+      `ENSO_PhasenIntensity_(ONIbased)` %in%
+        c('N') ~ 'Neutral',
+      TRUE ~ NA_character_
+    ))
+#so i literally took their classifications (which is ONi-based) and said if tey were nino, nina, or neutral. 
+
+glimpse(enso_monthly)
+
+#ok now we want yearly data b/c the paper's data is by year - sorry this cell is getting long
+
+#we are also adding a few other variables (min, median, max....) since we decided it might be best to try out a range of possibilities - this is especially because our dataset had monthly temperatures and although mean is a good start to observe, temperature fluctations and weather can shift drastically across the months and potentially get hidden in the mean. so we're seeing if there are possibly better metrics that could display the extreme events we care about (but not to a a point where we are biased)
+
+enso_yearly <- enso_monthly %>%
+  group_by(year) %>%
+  summarise(
+    nino34_sst_mean = #we want to see the annual mean for the temperature data (in C)
+      mean(Nino_34_SST, na.rm = TRUE),
+    nino34_anom_mean = #this is the mean of the anomalies (we care about this for the model since we are relying on those)
+      mean(Nino_34_SST_Anomaly, na.rm = TRUE),
+    nino34_anom_max = #we're taking highest and lowest values too for later analysis - good to know max and min especially for our model
+      max(Nino_34_SST_Anomaly, na.rm = TRUE),
+    nino34_anom_min =
+      min(Nino_34_SST_Anomaly, na.rm = TRUE),
+    oni_mean = #oni is based on 3.4 data but slightly different as it uses a different way of caluclating anomalies (different amount of time - monthwise)
+      mean(ONI, na.rm = TRUE),
+    oni_max =
+      max(ONI, na.rm = TRUE),
+    oni_min =
+      min(ONI, na.rm = TRUE),
+    global_temp_anom_mean = #we're also taking global temp mean because it can help show us differences in nino/nina anomalies
+      mean(Global_Temperature_Anomaly, na.rm = TRUE),
+
+    .groups = "drop"
+  )
+
+glimpse(enso_yearly)
+```
+
+```{r}
+# we want to see if we can replicate that graph we saw initially because we don't know if we're working with the same dataset and maybe this is something completely different
+
+#actual plotting of the enso data that gives us a hint that we could actually use this data for a model
+#shoutout dpylr again it's amazing
+
+enso_yearly_phase <- enso_monthly %>%
+  filter(!is.na(enso_phase)) %>%
+  count(
+    year,
+    enso_phase,
+    name = "months"
+  ) %>%
+  group_by(year) %>%
+  slice_max(
+    months,
+    n = 1,
+    with_ties = FALSE
+  ) %>%
+  ungroup() %>%
+  select(
+    year,
+    dominant_enso_phase = enso_phase
+  )
+
+enso_yearly <- enso_yearly %>%
+  left_join(
+    enso_yearly_phase,
+    by = "year"
+  )
+
+glimpse(enso_yearly)
+
+table(enso_yearly$dominant_enso_phase)
+
+#plotting
+ggplot(
+  enso_yearly,
+  aes(
+    x = year,
+    y = nino34_anom_mean,
+    fill = dominant_enso_phase
+  )
+) +
+  geom_col() +
+  labs(
+    title = "Niño 3.4 SST anomaly by year, 1980–2016",
+    x = "year",
+    y = "Niño 3.4 anomaly (annual mean, °C)",
+    fill = "Dominant ONI-based ENSO phase"
+  ) +
+  theme_minimal()
+
+#lo and behold we have some ups and downs that "coincidentally" match with the ups and downs we see in figure 4
+#so now we want to see if there is an actual correlation between the anomaly data and the bleaching frequency data - because personally i did not quite like that they showed rising temperatures and were like yeah years since 1980 is good enough to show that temperature is rising but we won't actually use temperature or the enso index in our model
+
+#they aren't wrong though and we can see a plot that shows this too - nest cell (because its not as directly important to the model we want to make)
+```
+
+
+ok so we can see our dataset is actually showing similar patterns to what we saw before and still corresponds with the paper's figures too (yay).
+
+now we want to see which of the variables we pulled might actually correlated with the data
+
+the idea so far is kinda:
+1. noticed that climate data (that they referenced but did not use) follows the ups and downs of bleaching events over the years
+2. pick out some variables
+    - global - good to know and probably going to help it steadily increase cases b/c its been going up over time
+    - el nino - hoping that this will help follow that sort of oscillation we see in the cases (up and down) - was hoping to actually use multiple depending on region (thank goodness we did not that would have been so many paramters omg) 
+    - ONI (oceanic nino index) - basically nino 3.4 but different averaging involved 
+3. see which of the variables (and our min, max, median, mean of them) correlates best with the data - the idea is that if there is a correlation of some sort, we can use it to improve the model. even though a GLMM is generally described with fixed effects, it is still dependent and indepents variable related
+
+```{r}
+#ok now the fun part (or almost at it)
+#we want to see what variables in our climate data might correlate to the researcher's bleaching data and then decide what we could use to try and improve their model
+
+#first we build a table with the joined data (all the climate variables we care about and the belaching data)
+master_blenso <- bleach_long %>%
+  left_join(
+    enso_yearly,
+    by = "year"
+  )
+
+#also some region and year grouping of the data
+region_year <- master %>%
+  group_by(
+    region,
+    year
+  ) %>%
+  summarise(
+    n_locations = n(),
+    n_severe =
+      sum(severe),
+    prop_severe =
+      mean(severe),
+    n_any_bleach =
+      sum(any_bleach), #btdubs bc idk if i mentioned it - any bleach is like severe = 1 and moderate = 1 but we are actually mostly doing analysis on severe later on. lowk was curious later on to see if we could run their second analysis too but for time-related purposes we did not 
+    prop_any_bleach =
+      mean(any_bleach),
+    nino34_anom_min =
+      first(nino34_anom_min), #first() takes first value from a vector
+    nino34_anom_median =
+      first(nino34_anom_median),
+    nino34_anom_mean =
+      first(nino34_anom_mean),
+    nino34_anom_max =
+      first(nino34_anom_max),
+    oni_min =
+      first(oni_min),
+    oni_median =
+      first(oni_median),
+    oni_mean =
+      first(oni_mean),
+    oni_max =
+      first(oni_max),
+    global_temp_anom_mean =
+      first(global_temp_anom_mean),
+
+    .groups = "drop"
+  )
+
+glimpse(master_blenso)
+#dint worry when u see lcoation id numbers - they actyally correspond to the specific location (we're in long format so we have a row for all the locations and their years from 1980 to 2026)
+```
+
+```{r}
+#so right before the actul fun part (analyzing the data) we're making two functions that will basically speed this up so we dont have to write .cor and ggplot for everything we want to look at
+
+correlation_by_region <- function(data, predictor) { #predictor means like variable we wanna look at
+  data %>%
+    group_by(region) %>%
+    group_modify(
+      ~ {
+        x <- .x[[predictor]]
+        y <- .x$prop_severe
+        # remove missing pairs if present
+        keep <- complete.cases(x, y)
+        x <- x[keep]
+        y <- y[keep]
+        pearson_test <- cor.test(
+          y,
+          x,
+          method = "pearson"
+        )
+        spearman_test <- cor.test(
+          y,
+          x,
+          method = "spearman",
+          exact = FALSE
+        )
+        tibble(
+          predictor = predictor,
+          pearson_r =
+            unname(pearson_test$estimate),
+          pearson_p =
+            pearson_test$p.value,
+          spearman_rho =
+            unname(spearman_test$estimate),
+          spearman_p =
+            spearman_test$p.value
+        ) #why pearson and spearman? literally just because i wasnt sure which one to use. but based off figures and whatnot i leaned more towards pearson (good for linear stuff)
+      }
+    ) %>%
+    ungroup()
+}
+
+#plotting
+plot_bleaching_vs_predictor <- function(
+    data,
+    predictor,
+    x_label,
+    plot_title
+) {
+  ggplot(
+    data,
+    aes(
+      x = .data[[predictor]],
+      y = prop_severe
+    )
+  ) +
+    geom_point() +
+    geom_smooth(
+      method = "lm",
+      se = TRUE
+    ) +
+    facet_wrap(
+      ~ region
+    ) +
+    labs(
+      title = plot_title,
+      x = x_label,
+      y = "Proportion of locations severely bleached"
+    ) +
+    theme_minimal()
+}
+```
+
+```{r}
+#ok now the fun part
+
+#we want to make a table of all the variables and their correlations and p values
+nino_predictors <- c(
+  "nino34_anom_min",
+  "nino34_anom_median",
+  "nino34_anom_mean"
+)
+
+nino_cor_tests <- bind_rows(
+  lapply(
+    nino_predictors,
+    function(x)
+      correlation_by_region(
+        region_year,
+        x
+      )
+  )
+)
+
+nino_cor_tests
+
+oni_predictors <- c(
+  "oni_min",
+  "oni_median",
+  "oni_mean",
+  "oni_max"
+)
+
+oni_cor_tests <- bind_rows(
+  lapply(
+    oni_predictors,
+    function(x)
+      correlation_by_region(
+        region_year,
+        x
+      )
+  )
+)
+
+oni_cor_tests
+
+global_predictor <- c(
+  "global_temp_anom_mean"
+)
+
+global_cor_tests <- bind_rows(
+  lapply(
+    global_predictor,
+    function(x)
+      correlation_by_region(
+        region_year,
+        x
+      )
+  )
+)
+
+global_cor_tests
+```
+Apologies for all the numbers, but there are a few takeaways from this.
+1. global_temp_anom_mean showed a satistically signficant positive correlation with the bleaching data for all regions (except for West Atlantic - the paper noticed something off about this region too)
+2. nino 3.4 anomaly mean data (what we initally wanted to pursue) had varied corerlations with only the Pacific having a positive corelation with a significant p-value (so we can reject the null hypothesis that there is no corrrelation). what this might tell us is that there is a region-specific relationship with the nino data as the pacific region is very close to where the nino 3.4 data is actually measured
+
+```{r}
+#plotting it all out now
+plot_bleaching_vs_predictor(
+  region_year,
+  "nino34_anom_mean",
+  "nino 3.4 SST anomaly (annual mean, °C)",
+  "Severe coral bleaching vs mean Niño 3.4 anomaly"
+)
+
+plot_bleaching_vs_predictor(
+  region_year,
+  "nino34_anom_median",
+  "nino 3.4 SST anomaly (annual median, °C)",
+  "Severe coral bleaching vs median Niño 3.4 anomaly"
+)
+
+plot_bleaching_vs_predictor(
+  region_year,
+  "nino34_anom_max",
+  "max annual nino 3.4 SST anomaly (°C)",
+  "Severe coral bleaching vs max nino 3.4 anomaly"
+)
+
+
+plot_bleaching_vs_predictor(
+  region_year,
+  "oni_max",
+  "max annual oni (°C)",
+  "Severe coral bleaching vs max annual oni"
+)
+
+plot_bleaching_vs_predictor(
+  region_year,
+  "oni_median",
+  "median annual ONI (°C)",
+  "Severe coral bleaching vs median annual oni"
+)
+
+plot_bleaching_vs_predictor(
+  region_year,
+  "oni_mean",
+  "mean annual ONI (°C)",
+  "Severe coral bleaching vs mean annual oni"
+)
+
+plot_bleaching_vs_predictor(
+  region_year,
+  "oni_min",
+  "minimum annual ONI (°C)",
+  "Severe coral bleaching vs min annual oni"
+)
+
+plot_bleaching_vs_predictor(
+  region_year,
+  "global_temp_anom_mean",
+  "global temp anomaly mean (°C)",
+  "Severe coral bleaching vs annual global temp anomaly"
+)
+```
+
+so that was visual representation essentially. the numbers show us the same thing. probably could have put whether it was signficant or not in the plot but it's easier if i tell u that global anomaly had signficant results (expect for the west atlantic region - researcher's also noticed this one was weird) and nino 3.4 was signficant for pscific but nothing else.
+
+```{r}
+#now we wanted to follow the type of model the paper did - a GLMM
+#in r we can call on the glmer function to calculate the model for us just by inputting variables
+#so now we esentially want to decide what fixed effects we want to use that differ from the paper's
+
+#this is the quesiton we want to answer with the GLMM: How does the probability of severe bleaching change with -----------, allowing that relationship to differ by region, while also allowing each reef location to have its own persistent baseline tendency to bleach?
+
+#we first add two new columns to our master_blenso table
+#you might be wondering why we're basically calculating anomaly data again. we're centering it because we're only looking at a particular moment of time and so we center the data again 
+#we also do this because in our model, if we ever have one of the fixed effects as 0, we can have a much easier time calcylating the regional intercept
+#so a GLMM involving this data is something like this:
+# logit(p) = regional_intercept + region*something + random_effect
+# or with more fixed effects (which we will try)
+# logit(p) = regional_intercept + region*something + region*something_else + random_effect
+#so if we ever have 0 for those somethings, we know it is the avg and we can find regional_intercept easily
+
+master_blenso <- master_blenso %>%
+  mutate(
+    temp_c =
+      global_temp_anom_mean -
+      mean(global_temp_anom_mean, na.rm = TRUE),
+
+    nino_c =
+      nino34_anom_mean -
+      mean(nino34_anom_mean, na.rm = TRUE)
+  )
+
+#ok glmer time now
+#we are looking at three models
+# 1. the researchers who use region and time (years since 1980) as fixed effects
+# 2. ours - fixed effects being region and global anomaly temp
+# 3. ours - fixed effects being region and global anomaly temp AND nino 3.4 anomaly temp
+
+model_1_paper_time <- glmer(
+  severe ~ #our model estimates P(severe = 1)
+    0 + region + #we don't have an overall intercept because we want it to find one that is region-specific - this is part of fixed effects btw
+    region:t + #this was the researchers' fixed effects (region and time (tyears since 1980))
+    (1 | location_id), #random effect (more right below)
+  data = master_blenso, #our dataset
+  family = binomial, #glmer now knows our variable is binary
+  control = glmerControl(
+    optimizer = "bobyqa", #we ran into some troubles with the basic glmer function so we had to mess around a little (also more below)
+    optCtrl = list(maxfun = 200000) #gives more opportunities for convergence
+  )
+)
+
+#about the random effect because it was getting crowded - we look at one specific location (100 total) over many years so the observations at that sole location are not going to be independent. so this is trying to account for that location-specific variance
+#1 sets a random intercept allowing for eahc location to have a specific intercept. what this essentially allows for is to say that each lcoation may have a bit of a higher or lower tendnecy to bleach severely from the baseline
+
+#convergence and optimization
+#converge is essentially when as good of parameter combination has been found (a sweet spot where tiny differences don't make big changes anymore)
+#an optimizer has to consider a lot of stuff and the default one wasn't doing too great. the researcher's also had to tweak some stuff. 
+#shoutout https://stackoverflow.com/questions/33670628/solution-to-the-warning-message-using-glmer for not being the only person with this problem
+#the specification of the optimizer doesn't change the model, only the method used to estimate the paprameters
+#this was a bit out of my depth but the following stack overflow advice worked - https://www.damtp.cam.ac.uk/user/na/NA_papers/NA2009_06.pdf
+
+model_2_global <- glmer(
+  severe ~ #our model estimates P(severe = 1)
+    0 + region + #we don't have an overall intercept because we want it to find one that is region-specific - this is part of fixed effects btw
+    region:temp_c + #this is our region and global anomaly fixed effects
+    (1 | location_id), #
+  data = master_blenso,
+  family = binomial,
+  control = glmerControl(
+    optimizer = "bobyqa", #we ran into some troubles with the basic glmer function so we had to mess aorund a little
+    optCtrl = list(maxfun = 200000)
+  )
+)
+
+model_3_global_and_nino <- glmer(
+  severe ~
+    0 + region +
+    region:temp_c +
+    region:nino_c +
+    (1 | location_id), # this is our random effect btdubs
+  data = master_blenso,
+  family = binomial,
+  control = glmerControl(
+    optimizer = "bobyqa", #we ran into some troubles with the basic glmer function so we had to mess aorund a little
+    optCtrl = list(maxfun = 200000)
+  )
+)
+
+summary(model_1_paper_time)
+summary(model_2_global)
+summary(model_3_global_and_nino)
+
+#what were our fixed effects
+fixef(model_1_paper_time) 
+fixef(model_2_global)
+fixef(model_3_global_and_nino)
+
+#random effect
+isSingular(model_1_paper_time)
+isSingular(model_2_global)
+isSingular(model_3_global_and_nino)
+
+#reef to reef variation
+VarCorr(model_1_paper_time) 
+VarCorr(model_2_global)
+VarCorr(model_3_global_and_nino)
+
+```
+
+we have all positive global temperature slopes and they're significant. joy! (look at estiamte columns for temp_c and **** stuff) - what is extra cool is that the paper's model had a - slope and we have a very slight positive one
+it is cery cool to see how the slopes are actually different depending on the region! this is pretty cool im happy
+
+nino anomaly was weird so estimates are weird too (its infe that we don't see all positive). some are not signficant and i do not know why this model performed better. i fear that it is performing good for the pacific region and that is what is contributing to that very slight change in AIC and BIC somewhow (more in the cell below on AIC and BIC because it gets a little lost here). - ok im writing this last sentence much later and I think (relaly not sure if im right) that the score is getting improved because the nino3.4 is improving the correct predictions to the observed data for specific and the weight is essentially neglibible on all the other regions so that is what is making the score slightly better; it is making pacific predicting slightly better and not making any of the other regions worse
+
+so right now we can pretty safely say that the enso data helps and it shows the differences between regions but its still not the best predictor (like universal predictor) from looking at these values
+
+
+```{r}
+#which model works better? - prev outputs kinds showed this but this is cleaner
+#we can use AIC and BIC
+#i knew nothing about these so hopefully this makes sense
+
+#im sure there are other ways to compare, but a lot of stuff primarly mentioned GLMs so i was worried we coudn't apply it
+
+# basically, i feared overfitting - the models would be too focused on nino anomaly data (which already was weird during correlation) and would mess everything up. so AIC and BIC kind of penalize for complexity that could lead to this (from what i udnerstand)
+# shoutout this source: https://medium.com/@jshaik2452/choosing-the-best-model-a-friendly-guide-to-aic-and-bic-af220b33255f
+#BIC seems to be stricter
+
+#this is also in the summary stuff above but it is easier to see here
+AIC(
+  model_1_paper_time,
+  model_2_global,
+  model_3_global_and_nino
+)
+
+BIC(
+  model_1_paper_time,
+  model_2_global,
+  model_3_global_and_nino
+)
+
+#scores depends on a amthematical function so i don't think theres a real scale to use. we just want it to be lower than our other models 
+
+```
+
+So now oddly enough, model 3 seems to work best (despite the nino anomaly data not always having signficant correlation with regional severe bleaching proportion). It is not drastically different, but we still get better results than the paper's model for both oof ours (which is what we wanted). This essentially gives us a model to code in colab and simulate now.
+
+```{r}
+#so to actually make a very clear table that we will use in colab now
+#btw if i wrote colabfold anywhere im so sorry it is the first thing i associate with colab notebook and i always miss when i write it or mention. it
+
+master_location_year <- master %>%
+  select(
+    location_id,
+    region,
+    year,
+    t,
+    severe,
+    global_temp_anom_mean,
+    nino34_anom_mean,
+    temp_c,
+    nino_c
+  )
+
+# quick checks
+glimpse(master_location_year)
+
+nrow(master_location_year)
+n_distinct(master_location_year$location_id)
+n_distinct(master_location_year$year)
+
+# export for Colab
+write_csv(
+  master_location_year,
+  "master_location_year.csv"
+)
+```
+
+Here are some other sources used but not mentioned in the hashtags because it was getting messy - these are not necessarily professional or academic sources but credit where credit is due because they helped
+https://www.reddit.com/r/AskStatistics/comments/duth2j/use_of_aic_to_compare_models/
+https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/AIC
+https://www.reddit.com/r/statistics/comments/11dlcvd/question_help_with_glmm_in_r/
+https://www.rdocumentation.org/packages/mclust/versions/6.0.0/topics/bic
+https://medium.com/@jshaik2452/choosing-the-best-model-a-friendly-guide-to-aic-and-bic-af220b33255f
