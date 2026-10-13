@@ -1,6 +1,6 @@
 ### **Project CB2330**
 
-🪸 *Coral bleaching GLMM: replacing calendar time with climate* 🪸
+🪸 *Predicting Severe Coral Bleaching Events with a GLMM: replacing calendar time with climate parameters to improve model performance* 🪸
 
 ---
 In the article *Spatial and temporal patterns of mass bleaching of corals in the Anthropocene* by Hughes et al. (2018) predictions about the severity of coral bleaching were made by using a generalized linear mixed model (GLMM). They observed 100 reef locaitons in 4 regions from 1980 to 2016 and noted if there was a severe (>30% of the area), moderate (>29% of the area), or no bleaching event. They then used this data to determine the spatial and temporal patterns of bleaching since entering the Anthropocene era (since 1980).
