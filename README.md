@@ -26,7 +26,7 @@ https://github.com/qhtni/CB2330-project/blob/main/PRO1_Group8_2330.ipynb
 
 🪸 The code is set up to collect the necessary data directly from this repository which means that an active internet connection is required in order to run the cells. 
 
-🪸 Now the that the NoteBook is in Google Colab: Click on **Runtime** in the Colab menu and choose **Run all**
+🪸 Now that the NoteBook is in Google Colab: Click on **Runtime** in the Colab menu and choose **Run all**
 
 ---
 
