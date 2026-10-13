@@ -9,10 +9,10 @@ The authors demonstrated the longterm tren that severe coral bleaching increased
 
 The aim of this project is to use the model suggested by the authors and compare it to a new model where one of their fixed effects (Time) is replaced by climate predictors (global temperature anomaly and Nino 3.4 temperature anomaly).
 
-Following their method of modelling in R (using the glmer() function), we retrieve the coefficients of our model and show a few analysis in the notebook:
-1. how might a coefficient be predicted with a backwards simulation.
-2. how our model compares to the observed data and whether we can better predict climate phase-related spikes and drops better than the researchers' model
-3. how often the observations fall into the range of values our model predicts across 400 forward simulations
+Following their method of modelling in R (using the glmer() function), we retrieve the coefficients of our model and show some analysis in the notebook:
+- How might a coefficient be predicted with a backwards simulation.
+- How our model compares to the observed data and whether we can better predict climate phase-related spikes and drops better than the researchers' model
+- How often the observations fall into the range of values our model predicts across 400 forward simulations
 
 Although our model assumes that this phenomenon can be modelled by a linear relationship and has many limitations since factors such as reef depth or species are not considered, it was able to fit to the up-and-down trend of the observed data when compared to the researchers' model.
 
@@ -22,7 +22,7 @@ The researchers moreso use time to show us that bleaching changed while our clim
 ### **How to run the repository**
 
 🪸 Go to the Github repository: 
-https://github.com/qhtni/CB2330-project/blob/main/IF_PRO1_2330.ipynb
+https://github.com/qhtni/CB2330-project/blob/main/PRO1_Group8_2330.ipynb
 
 🪸 Click the "Open in Colab" button in the top left corner to open the notebook in Google Colab. Or download the file and then open it in Google Colab.
 
