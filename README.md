@@ -10,7 +10,7 @@ In the article *Spatial and temporal patterns of mass bleaching of corals in the
 ### **How to run the repository**
 
 🪸 Go to the Github repository: 
-  [https://github.com/qhtni/CB2330-project/blob/main/istg_this_better_be_the_last_one.ipynb]
+https://github.com/qhtni/CB2330-project/blob/main/IF_PRO1_2330.ipynb
 
 🪸 Click the "Open in Colab" button in the top left corner to open the notebook in Google Colab. Or download the file and then open it in Google Colab.
 
@@ -20,7 +20,7 @@ In the article *Spatial and temporal patterns of mass bleaching of corals in the
 
 ---
 ### **Requirements**
-In order to be able to run this code it is required that python is installed???
+In order to be able to run this code it is required that python is installed
 
 
 
