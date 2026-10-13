@@ -19,8 +19,6 @@ https://github.com/qhtni/CB2330-project/blob/main/IF_PRO1_2330.ipynb
 🪸 Now the that the NoteBook is in Google Colab: Click on **Runtime** in the Colab menu and choose **Run all**
 
 ---
-### **Requirements**
-In order to be able to run this code it is required that python is installed
 
 
 
