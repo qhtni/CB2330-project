@@ -11,7 +11,7 @@ The aim of this project is to use the model suggested by the authors and compare
 
 Following their method of modelling in R (using the glmer() function), we retrieve the coefficients of our model and show some analysis in the notebook:
 - How might a coefficient be predicted with a backwards simulation.
-- How our model compares to the observed data and whether we can better predict climate phase-related spikes and drops better than the researchers' model
+- How our model compares to the observed data and whether we can better predict climate phase related spikes and drops better than the researchers' model
 - How often the observations fall into the range of values our model predicts across 400 forward simulations
 
 Although our model assumes that this phenomenon can be modelled by a linear relationship and has many limitations since factors such as reef depth or species are not considered, it was able to fit to the up-and-down trend of the observed data when compared to the researchers' model.The researchers more so use time to show us that bleaching changed while our climate variables propose an explanation for why it changed.
